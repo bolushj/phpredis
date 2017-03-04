@@ -501,14 +501,18 @@ typedef enum _PUBSUB_TYPE {
 }
 
 #define REDIS_SAVE_CALLBACK(callback, closure_context) do { \
-    fold_item *f1 = malloc(sizeof(fold_item)); \
-    f1->fun = (void *)callback; \
-    f1->ctx = closure_context; \
-    f1->next = NULL; \
-    if (redis_sock->current) { \
-        redis_sock->current->next = f1; \
+    fold_item *fi = malloc(sizeof(fold_item)); \
+    fi->fun = (void *)callback; \
+    fi->ctx = closure_context; \
+    fi->next = NULL; \
+    fi->txn = redis_sock->pipeline_txn; \
+    IF_NOT_MULTI() { \
+        redis_sock->pipeline_txn++; \
     } \
-    redis_sock->current = f1; \
+    if (redis_sock->current) { \
+        redis_sock->current->next = fi; \
+    } \
+    redis_sock->current = fi; \
     if (NULL == redis_sock->head) { \
         redis_sock->head = redis_sock->current; \
     } \
@@ -606,6 +610,7 @@ typedef struct fold_item {
     zval * (*fun)(INTERNAL_FUNCTION_PARAMETERS, void *, ...);
     void *ctx;
     struct fold_item *next;
+    short txn;
 } fold_item;
 
 typedef struct request_item {
@@ -641,6 +646,7 @@ typedef struct {
 
     request_item   *pipeline_head;
     request_item   *pipeline_current;
+    short          pipeline_txn;
 
     char           *err;
     int            err_len;
